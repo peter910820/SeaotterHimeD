@@ -1,14 +1,16 @@
 import asyncio
 import discord
 import os
+import multiprocessing
 import re
+import time
 import yt_dlp
 
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from loguru import logger
-from typing import Optional, TypedDict, Union, cast
+from typing import TypedDict, cast
 
 from common.structure import CustomError
 from utils.embed_output import error_output, youtube_palyer_output, youtube_palyer_notice_output
@@ -162,21 +164,8 @@ class YotubePlayer(commands.Cog):
                 return
             if not self.bot.voice_clients[0].is_playing():
                 await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲/單已加入: 加入網址為{youtube_url} 即將開始播放歌曲~'))
-                title = self.forbidden_char.sub(
-                    '_', self.play_queue[0]['title'])
-                url = self.play_queue[0]['url']
-                music_path = f'{self.song_path}{title}'
-                ydl_opts: YoutubeDLOptions = {
-                    'cookiefile': self.cookie_path,
-                    'format': 'bestaudio/best',
-                    'outtmpl': music_path,
-                    'postprocessors': self.ydl_opts_postprocessors,
-                }
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-                except Exception as e:
-                    logger.error(e)
+                music_path = await self.download_song()
+
                 source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
                     executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
                 self.bot.voice_clients[0].play(
@@ -199,6 +188,24 @@ class YotubePlayer(commands.Cog):
             logger.debug(str(error))
             self.bot.loop.create_task(self.after_song(interaction))
 
+    async def download_song(self) -> str:
+        title = self.forbidden_char.sub('_', self.play_queue[0]['title'])
+        url = self.play_queue[0]['url']
+        music_path = f'{self.song_path}{title}'
+        ydl_opts: YoutubeDLOptions = {
+            'cookiefile': self.cookie_path,
+            'format': 'bestaudio/best',
+            'outtmpl': music_path,
+            'postprocessors': self.ydl_opts_postprocessors,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return music_path
+        except Exception as e:
+            logger.error(e)
+            raise CustomError(str(e))
+
     async def after_song(self, interaction: discord.Interaction):
         self.play_queue.pop(0)
         if self.clean(interaction) == 1:
@@ -212,26 +219,15 @@ class YotubePlayer(commands.Cog):
             self.channel_id.clear()
             return
         if len(self.play_queue) > 0:
-            title = self.forbidden_char.sub('_', self.play_queue[0]['title'])
-            url = self.play_queue[0]['url']
-            music_path = f'{self.song_path}{title}'
-            ydl_opts: YoutubeDLOptions = {
-                'cookiefile': self.cookie_path,
-                'format': 'bestaudio/best',
-                'outtmpl': music_path,
-                'postprocessors': self.ydl_opts_postprocessors,
-            }
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-            except Exception as e:
-                logger.error(e)
+            music_path = await self.download_song()
+
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
                 executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
             self.bot.voice_clients[0].play(
                 source, after=lambda error: self.after_song_interface(
                     interaction, error)
             )
+
             if self.notice:
                 await self.text_channel_id.send(embed=await youtube_palyer_notice_output(self.play_queue[0]))
             await self.change_status(discord.Activity(

@@ -26,7 +26,7 @@ class SeaotterHimeD(commands.Bot):
         await self.load_extension('cogs.general')
         await self.load_extension('cogs.info')
         await self.load_extension('cogs.owner')
-        await self.load_extension('cogs.youtube_palyer')
+        await self.load_extension('cogs.youtube_player_V2')
         await bot.tree.sync(guild=None)
 
     async def on_ready(self):
