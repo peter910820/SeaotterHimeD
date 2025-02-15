@@ -64,7 +64,7 @@ class YotubePlayer(commands.Cog):
 
         FFMPEG_PATH = os.getenv('FFMPEG_PATH')
         if FFMPEG_PATH == None:
-            raise CustomError(f"load .env file parameter 'FFMPEG_PATH' failed")
+            raise CustomError(f'load .env file parameter "FFMPEG_PATH" failed')
         self.ffmpeg_path = FFMPEG_PATH
 
         self.forbidden_char = re.compile(r'[/\\:*?"\'<>|\.]')
@@ -121,7 +121,7 @@ class YotubePlayer(commands.Cog):
                 c_var_value = self.ydl_opts_postprocessors
             case _:
                 raise CustomError(
-                    f"no usage of parameter c_var='{c_var}'")
+                    f'no usage of parameter c_var="{c_var}"')
         await interaction.response.send_message(embed=await youtube_palyer_output(str(c_var_value)), ephemeral=True)
 
     @app_commands.command(name='join', description='加入語音頻道')

@@ -1,9 +1,7 @@
 import asyncio
 import discord
 import os
-import multiprocessing
 import re
-import time
 import yt_dlp
 
 from discord import app_commands
@@ -66,11 +64,11 @@ class YotubePlayer(commands.Cog):
 
         FFMPEG_PATH = os.getenv('FFMPEG_PATH')
         if FFMPEG_PATH == None:
-            raise CustomError(f"load .env file parameter 'FFMPEG_PATH' failed")
+            raise CustomError(f'load .env file parameter "FFMPEG_PATH" failed')
         self.ffmpeg_path = FFMPEG_PATH
 
         self.forbidden_char = re.compile(r'[/\\:*?"\'<>|\.]')
-        self.play_queue: list[SongDetails] = []
+        self.play_list: list[SongDetails] = []
         self.channel_id: list[int] = []
         self.text_channel_id = None
         self.pause_flag: bool = False
@@ -123,7 +121,7 @@ class YotubePlayer(commands.Cog):
                 c_var_value = self.ydl_opts_postprocessors
             case _:
                 raise CustomError(
-                    f"no usage of parameter c_var='{c_var}'")
+                    f'no usage of parameter c_var="{c_var}"')
         await interaction.response.send_message(embed=await youtube_palyer_output(str(c_var_value)), ephemeral=True)
 
     @app_commands.command(name='join', description='加入語音頻道')
@@ -136,6 +134,8 @@ class YotubePlayer(commands.Cog):
     @app_commands.command(name='leave', description='離開語音頻道')
     async def leave(self, interaction: discord.Interaction) -> None:
         if await self.handle_connect(interaction, 'leave'):
+            await asyncio.sleep(1)
+            self.clean(interaction)
             await interaction.response.send_message(embed=await youtube_palyer_output('離開語音頻道成功'))
         else:
             await interaction.response.send_message(embed=await youtube_palyer_output('機器人未加入頻道'))
@@ -144,8 +144,8 @@ class YotubePlayer(commands.Cog):
     @app_commands.describe(notice='song notice, if not entered, Bot doesn\'t notify when song changes',
                            channel_id='Voice channel id, if not entered, the current channel will be used')
     @app_commands.choices(notice=[
-        app_commands.Choice(name=False, value=0),
-        app_commands.Choice(name=True, value=1),
+        app_commands.Choice(name='False', value=0),
+        app_commands.Choice(name='True', value=1),
     ])
     async def play(self, interaction: discord.Interaction, notice: int, youtube_url: str, channel_id: str = '0') -> None:
         self.notice = bool(notice)
@@ -164,8 +164,7 @@ class YotubePlayer(commands.Cog):
                 return
             if not self.bot.voice_clients[0].is_playing():
                 await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲/單已加入: 加入網址為{youtube_url} 即將開始播放歌曲~'))
-                music_path = await self.download_song()
-
+                music_path = await self.download_song(0)  # download music
                 source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
                     executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
                 self.bot.voice_clients[0].play(
@@ -173,9 +172,11 @@ class YotubePlayer(commands.Cog):
                         interaction, error)
                 )
                 if self.notice:
-                    await interaction.followup.send(embed=await youtube_palyer_notice_output(self.play_queue[0]))
+                    await interaction.followup.send(embed=await youtube_palyer_notice_output(self.play_list[0]))
                 await self.change_status(discord.Activity(
-                    type=discord.ActivityType.listening, name=self.play_queue[0]['title']))
+                    type=discord.ActivityType.listening, name=self.play_list[0]['title']))
+                if len(self.play_list) >= 1:
+                    music_path = await self.download_song(1)  # download music
             else:
                 await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲已加入排序: 加入網址為{youtube_url}'))
         else:
@@ -188,9 +189,10 @@ class YotubePlayer(commands.Cog):
             logger.debug(str(error))
             self.bot.loop.create_task(self.after_song(interaction))
 
-    async def download_song(self) -> str:
-        title = self.forbidden_char.sub('_', self.play_queue[0]['title'])
-        url = self.play_queue[0]['url']
+    async def download_song(self, index: int) -> str:
+        title = self.forbidden_char.sub('_', self.play_list[index]['title'])
+        self.play_list[index]['title'] = title
+        url = self.play_list[index]['url']
         music_path = f'{self.song_path}{title}'
         ydl_opts: YoutubeDLOptions = {
             'cookiefile': self.cookie_path,
@@ -207,52 +209,61 @@ class YotubePlayer(commands.Cog):
             raise CustomError(str(e))
 
     async def after_song(self, interaction: discord.Interaction):
-        self.play_queue.pop(0)
-        if self.clean(interaction) == 1:
+        previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+        if self.clean_single(interaction, previous_song) == 1:
             await self.text_channel_id.send(embed=await youtube_palyer_output('正在嘗試重連...'))
             await asyncio.sleep(3)
         if len(self.bot.voice_clients) == 0:
             logger.warning('Reconnection failed, bot is ready to exit...')
-            self.play_queue.clear()
+            self.play_list.clear()
             self.clean(interaction)
             await self.text_channel_id.send(embed=await youtube_palyer_output('機器人連線失敗，請稍後再使用'))
             self.channel_id.clear()
             return
-        if len(self.play_queue) > 0:
-            music_path = await self.download_song()
-
+        if len(self.play_list) > 0:
+            self.play_list.pop(0)
+            previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+            # check if song exists
+            if os.path.exists(previous_song):
+                music_path = f'{self.song_path}{self.play_list[0]["title"]}'
+            else:
+                music_path = await self.download_song(0)  # download music
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
                 executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
             self.bot.voice_clients[0].play(
                 source, after=lambda error: self.after_song_interface(
                     interaction, error)
             )
-
             if self.notice:
-                await self.text_channel_id.send(embed=await youtube_palyer_notice_output(self.play_queue[0]))
+                await self.text_channel_id.send(embed=await youtube_palyer_notice_output(self.play_list[0]))
             await self.change_status(discord.Activity(
-                type=discord.ActivityType.listening, name=self.play_queue[0]['title']))
+                type=discord.ActivityType.listening, name=self.play_list[0]['title']))
+            if len(self.play_list) >= 1:
+                music_path = await self.download_song(1)  # download music
         else:
             await self.change_status(discord.Activity(
-                type=discord.ActivityType.watching, name='ご注文はうさぎですか？'))
+                type=discord.ActivityType.watching, name='Galgame'))
             logger.success('已播放完歌曲')
             await self.text_channel_id.send(embed=await youtube_palyer_output('已播放完歌曲'))
-            self.channel_id = []
+            self.channel_id.clear()
 
     @app_commands.command(name='skip', description='跳過歌曲')
     async def skip(self, interaction: discord.Interaction, count: int = 1) -> None:
         await interaction.response.defer()
-        if count > 1:
-            if count > len(self.play_queue):
-                count = len(self.play_queue)
-            count -= 1
-            for _ in range(0, count):
-                self.play_queue.pop(0)
-        if len(self.play_queue) != 0:
-            self.bot.voice_clients[0].stop()
-        else:
+        previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+        song_length = len(self.play_list)
+        if song_length == 0:
             await interaction.followup.send(embed=await youtube_palyer_output('我還沒加入語音頻道呦'))
             return
+        if count > 1:
+            if count > song_length:
+                count = song_length
+            count -= 1
+            for _ in range(0, count):
+                self.play_list.pop(0)
+        self.bot.voice_clients[0].stop()
+        await asyncio.sleep(1)  # make sure ffmpeg is stop
+        self.clean_single(interaction, previous_song)
         await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
     @app_commands.command(name='pause', description='暫停歌曲')
@@ -289,9 +300,9 @@ class YotubePlayer(commands.Cog):
                     with yt_dlp.YoutubeDL(self.get_details_options) as ydl:
                         details = ydl.extract_info(youtube_url, download=False)
                         if details.get('entries') == None:  # check if not a playlist
-                            self.play_queue.insert(
+                            self.play_list.insert(
                                 1, {'url': youtube_url, 'title': details.get('title')})
-                            logger.info(self.play_queue[1])
+                            logger.info(self.play_list[1])
                         else:
                             logger.warning('不支援歌單插入')
                             await interaction.followup.send(embed=await youtube_palyer_output('不支援歌單插入'))
@@ -303,11 +314,11 @@ class YotubePlayer(commands.Cog):
     @app_commands.command(name='list', description='查詢歌曲清單')
     async def list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
-        if len(self.play_queue) == 0:
+        if len(self.play_list) == 0:
             await interaction.followup.send(embed=await youtube_palyer_output('播放清單目前為空'))
         else:
-            display = f'播放清單剩餘歌曲: {len(self.play_queue)}首\n :arrow_forward: '
-            for index, t in enumerate(self.play_queue, start=1):
+            display = f'播放清單剩餘歌曲: {len(self.play_list)}首\n :arrow_forward: '
+            for index, t in enumerate(self.play_list, start=1):
                 display += f'{index}. _{t["title"]}_\n'
                 if len(display) >= 500:
                     display += '\n...還有很多首'
@@ -329,7 +340,7 @@ class YotubePlayer(commands.Cog):
                     'entries') if entry.get('title') not in {'[Deleted video]', '[Private video]'}]
             logger.info(str(list(
                 map(lambda x: {'url': x.get('url'), 'title': x.get('title')}, song_details))))
-            self.play_queue.extend(song_details)
+            self.play_list.extend(song_details)
 
     def url_format(self, youtube_url: str) -> str | None:
         if '&list=' in youtube_url:
@@ -373,9 +384,9 @@ class YotubePlayer(commands.Cog):
             case 'leave':
                 if len(self.bot.voice_clients) != 0:
                     # The song hasn’t finished playing yet
-                    if len(self.play_queue) != 0:
+                    if len(self.play_list) != 0:
                         try:
-                            self.play_queue = [self.play_queue[0]]
+                            self.play_list = [self.play_list[0]]
                             self.bot.voice_clients[0].stop()
                         except:
                             return True
@@ -404,6 +415,15 @@ class YotubePlayer(commands.Cog):
         except PermissionError as e:
             logger.error(e)
             logger.error('ffmpeg is possible that there is no normal exit!')
+            return 1
+        return 0
+
+    def clean_single(self, _: discord.Interaction, song_route: str) -> int:
+        try:
+            if os.path.exists(song_route):
+                os.remove(song_route)
+        except PermissionError as e:
+            logger.error(e)
             return 1
         return 0
 
