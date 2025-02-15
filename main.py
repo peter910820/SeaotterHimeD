@@ -38,9 +38,9 @@ class SeaotterHimeD(commands.Bot):
 
 if __name__ == '__main__':
     bot = SeaotterHimeD()
-    token = os.getenv('BOT_TOKEN')
-    if token is not None:
-        bot.run(token)
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
+    if BOT_TOKEN is not None:
+        bot.run(BOT_TOKEN)
     else:
         logger.error("Token is missing, the program will exit")
         sys.exit(1)

@@ -9,6 +9,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from loguru import logger
 
+from common.structure import CustomError
 from utils.embed_output import error_output, youtube_palyer_output, youtube_palyer_notice_output
 
 load_dotenv()
@@ -70,6 +71,9 @@ class YotubePlayer(commands.Cog):
                 c_var_value = self.get_details_options
             case 'ydl_opts_postprocessors':
                 c_var_value = self.ydl_opts_postprocessors
+            case _:
+                raise CustomError(
+                    f"no usage of parameter c_var='{c_var}'")
         await interaction.response.send_message(embed=await youtube_palyer_output(str(c_var_value)), ephemeral=True)
 
     @app_commands.command(name='join', description='加入語音頻道')
@@ -330,7 +334,7 @@ class YotubePlayer(commands.Cog):
                         except:
                             return True
                         await asyncio.sleep(1)  # Ensures the stop is complete
-                    await self.bot.voice_clients[0].disconnect()
+                    await self.bot.voice_clients[0].disconnect(force=False)
                     await self.change_status(discord.Activity(
                         type=discord.ActivityType.watching, name='ご注文はうさぎですか？'))
                     self.channel_id = []
@@ -342,7 +346,7 @@ class YotubePlayer(commands.Cog):
             case _:
                 logger.critical('A unknown error has occurred!')
 
-    async def change_status(self, act) -> None:
+    async def change_status(self, act: discord.Activity) -> None:
         await self.bot.change_presence(activity=act, status=discord.Status.online)
 
     def clean(self, _: discord.Interaction) -> int:

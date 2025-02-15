@@ -5,6 +5,7 @@ from discord.ext import commands
 from loguru import logger
 
 from utils.embed_output import error_output, owner_output
+from common.structure import CustomError
 
 
 class Owner(commands.Cog):
@@ -63,6 +64,9 @@ class Owner(commands.Cog):
                 case 'competing':
                     act = discord.Activity(
                         type=discord.ActivityType.competing, name=name)
+                case _:
+                    raise CustomError(
+                        f"no usage of parameter status='{status}'")
             await self.bot.change_presence(activity=act, status=discord.Status.online)
             await interaction.response.send_message(embed=await owner_output('更改機器人狀況成功!'), ephemeral=True)
             # TODO add other optional

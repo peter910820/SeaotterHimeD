@@ -2,6 +2,7 @@ import discord
 
 from discord import app_commands
 from discord.ext import commands
+from typing import cast
 
 from utils.embed_output import info_output
 from common.structure import ServerInfoStruct
@@ -21,12 +22,13 @@ class Info(commands.Cog):
 
     @app_commands.command(name='get_serverinfo', description='get current server info')
     async def get_serverinfo(self, interaction: discord.Interaction):
+        guild_info = cast(discord.Guild, interaction.guild)
         server_info = ServerInfoStruct(
-            guild_id=interaction.guild_id,
-            created_at=interaction.guild.created_at,
-            description=interaction.guild.description,
-            member_count=interaction.guild.member_count,
-            icon=interaction.guild.icon,
+            guild_id=cast(int, interaction.guild_id),
+            created_at=guild_info.created_at,
+            description=guild_info.description,
+            member_count=cast(int, guild_info.member_count),
+            icon=cast(discord.Asset, guild_info.icon),
         )
         await interaction.response.send_message(embed=await info_output(server_info))
 

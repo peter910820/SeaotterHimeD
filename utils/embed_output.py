@@ -5,7 +5,7 @@ from loguru import logger
 from common.structure import ServerInfoStruct
 
 
-async def error_output(error_message: str):
+async def error_output(error_message: Exception):
     embed = discord.Embed(
         title='ERROR', description='An error has occurred!', color=discord.colour.Colour.magenta())
     embed.add_field(name='Error content', value=error_message)
@@ -23,10 +23,11 @@ async def youtube_palyer_output(youtube_palyer_message: str):
 
 async def youtube_palyer_notice_output(song_data: str):
     embed = discord.Embed(
+        # type: ignore
         title='YT-PLAYER', description=f'現在正在播放: {song_data["title"]}', color=discord.colour.Colour.red())
     try:
         embed.set_thumbnail(
-            url=song_data['thumbnails'][0]['url'])
+            url=song_data['thumbnails'][0]['url'])  # type: ignore
     except:
         logger.warning('Setting thumbnail faild!')
     return embed
