@@ -1,13 +1,9 @@
-import datetime
 import discord
-
-from dataclasses import dataclass
 
 from discord import app_commands
 from discord.ext import commands
-from loguru import logger
 
-from utils.embed_output import error_output, info_output, general_output
+from utils.embed_output import info_output
 from common.structure import ServerInfoStruct
 
 
@@ -20,7 +16,7 @@ class Info(commands.Cog):
         await interaction.response.send_message(embed=await info_output(f'Your user ID: {interaction.user.id}'))
 
     @app_commands.command(name='get_guildid', description='get current guild id')
-    async def get_id(self, interaction: discord.Interaction):
+    async def get_guildid(self, interaction: discord.Interaction):
         await interaction.response.send_message(embed=await info_output(f'Current guild ID: {interaction.guild_id}'))
 
     @app_commands.command(name='get_serverinfo', description='get current server info')

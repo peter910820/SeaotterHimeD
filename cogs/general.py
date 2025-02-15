@@ -2,9 +2,8 @@ import discord
 
 from discord import app_commands
 from discord.ext import commands
-from loguru import logger
 
-from utils.embed_output import error_output, general_output
+from utils.embed_output import general_output
 
 
 class General(commands.Cog):

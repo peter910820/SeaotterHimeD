@@ -5,14 +5,14 @@ from loguru import logger
 from common.structure import ServerInfoStruct
 
 
-async def error_output(error_message):
+async def error_output(error_message: str):
     embed = discord.Embed(
         title='ERROR', description='An error has occurred!', color=discord.colour.Colour.magenta())
     embed.add_field(name='Error content', value=error_message)
     return embed
 
 
-async def youtube_palyer_output(youtube_palyer_message):
+async def youtube_palyer_output(youtube_palyer_message: str):
     embed = discord.Embed(
         title='YT-PLAYER', description='youtube_palyer message', color=discord.colour.Colour.red())
     embed.set_thumbnail(
@@ -21,7 +21,7 @@ async def youtube_palyer_output(youtube_palyer_message):
     return embed
 
 
-async def youtube_palyer_notice_output(song_data):
+async def youtube_palyer_notice_output(song_data: str):
     embed = discord.Embed(
         title='YT-PLAYER', description=f'現在正在播放: {song_data["title"]}', color=discord.colour.Colour.red())
     try:
@@ -39,7 +39,7 @@ async def general_output(general_message: str):
     return embed
 
 
-async def owner_output(owner_message):
+async def owner_output(owner_message: str):
     embed = discord.Embed(
         title='FOR-OWNER', description=owner_message, color=discord.colour.Colour.purple())
     return embed
