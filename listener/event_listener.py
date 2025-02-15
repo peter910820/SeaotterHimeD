@@ -4,7 +4,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from loguru import logger
 
-from utils.tools import error_output
+from utils.embed_output import error_output
 
 load_dotenv()
 

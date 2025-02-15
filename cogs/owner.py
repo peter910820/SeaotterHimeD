@@ -4,7 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 from loguru import logger
 
-from utils.tools import error_output, owner_output
+from utils.embed_output import error_output, owner_output
 
 
 class Owner(commands.Cog):

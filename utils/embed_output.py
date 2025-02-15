@@ -2,6 +2,8 @@ import discord
 
 from loguru import logger
 
+from common.structure import ServerInfoStruct
+
 
 async def error_output(error_message):
     embed = discord.Embed(
@@ -30,7 +32,7 @@ async def youtube_palyer_notice_output(song_data):
     return embed
 
 
-async def general_output(general_message):
+async def general_output(general_message: str):
     embed = discord.Embed(
         title='Helper', description='Assistant for delivering messages', color=discord.colour.Colour.blue())
     embed.add_field(name='Notice', value=general_message)
@@ -40,4 +42,18 @@ async def general_output(general_message):
 async def owner_output(owner_message):
     embed = discord.Embed(
         title='FOR-OWNER', description=owner_message, color=discord.colour.Colour.purple())
+    return embed
+
+
+async def info_output(message: ServerInfoStruct | str) -> discord.Embed:
+    if type(message) == ServerInfoStruct:
+        output_message = ""
+        output_message += f"伺服器ID: {message.guild_id}\n"
+        output_message += f"建立時間: {message.created_at}\n"
+        output_message += f"伺服器資訊: {message.description}\n"
+        output_message += f"成員數量: {message.member_count}"
+    else:
+        output_message = message
+    embed = discord.Embed(
+        title='Info', description=output_message, color=discord.colour.Colour.dark_blue())
     return embed
