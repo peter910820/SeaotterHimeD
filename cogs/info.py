@@ -13,7 +13,7 @@ class Info(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name='get_userid', description='get user id for yourself')
-    async def get_id(self, interaction: discord.Interaction):
+    async def get_userid(self, interaction: discord.Interaction):
         await interaction.response.send_message(embed=await info_output(f'Your user ID: {interaction.user.id}'))
 
     @app_commands.command(name='get_guildid', description='get current guild id')

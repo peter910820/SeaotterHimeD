@@ -8,33 +8,81 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from loguru import logger
+from typing import Optional, TypedDict, Union, cast
 
 from common.structure import CustomError
 from utils.embed_output import error_output, youtube_palyer_output, youtube_palyer_notice_output
 
+
 load_dotenv()
+
+
+class SongDetails(TypedDict):
+    '''
+    播放佇列內每一筆音樂的的型別定義
+    '''
+
+    url: str
+    title: str
+
+
+class PostprocessorsOptions(TypedDict):
+    '''
+    解析音檔的型別定義
+    '''
+
+    key: str
+    preferredcodec: str
+    preferredquality: str
+
+
+class YoutubeDLOptions(TypedDict):
+    '''
+    YoutubeDL播放參數的型別定義
+    '''
+
+    cookiefile: str
+    format: str
+    outtmpl: str
+    postprocessors: list[PostprocessorsOptions]
+
+
+class YoutubeDLOptionsForList(TypedDict):
+    '''
+    YoutubeDL播放參數(清單)的型別定義
+    '''
+
+    cookiefile: str
+    extract_flat: bool  # dont download
+    quiet: bool  # undisplay progress bar
+    noplaylist: bool  # playlist
 
 
 class YotubePlayer(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+        FFMPEG_PATH = os.getenv('FFMPEG_PATH')
+        if FFMPEG_PATH == None:
+            raise CustomError(f"load .env file parameter 'FFMPEG_PATH' failed")
+        self.ffmpeg_path = FFMPEG_PATH
+
         self.forbidden_char = re.compile(r'[/\\:*?"\'<>|\.]')
-        self.play_queue = []
-        self.channel_id = []
+        self.play_queue: list[SongDetails] = []
+        self.channel_id: list[int] = []
         self.text_channel_id = None
-        self.pause_flag = False
-        self.ffmpeg_path = os.getenv('FFMPEG_PATH')
-        self.song_path = './music_tmp/'
-        self.cookie_path = './cookies.txt'
-        self.volume = 0.1
-        self.notice = False
-        self.get_details_options = {
+        self.pause_flag: bool = False
+        self.song_path: str = './music_tmp/'
+        self.cookie_path: str = './cookies.txt'
+        self.volume: float = 0.1
+        self.notice: bool = False
+        self.get_details_options: YoutubeDLOptionsForList = {
             'cookiefile': self.cookie_path,
             'extract_flat': True,  # dont download
             'quiet': True,  # undisplay progress bar
             'noplaylist': False,  # playlist
         }
-        self.ydl_opts_postprocessors = [{
+        self.ydl_opts_postprocessors: list[PostprocessorsOptions] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '320',
@@ -118,7 +166,7 @@ class YotubePlayer(commands.Cog):
                     '_', self.play_queue[0]['title'])
                 url = self.play_queue[0]['url']
                 music_path = f'{self.song_path}{title}'
-                ydl_opts = {
+                ydl_opts: YoutubeDLOptions = {
                     'cookiefile': self.cookie_path,
                     'format': 'bestaudio/best',
                     'outtmpl': music_path,
@@ -153,21 +201,21 @@ class YotubePlayer(commands.Cog):
 
     async def after_song(self, interaction: discord.Interaction):
         self.play_queue.pop(0)
-        if self.clean(self) == 1:
+        if self.clean(interaction) == 1:
             await self.text_channel_id.send(embed=await youtube_palyer_output('正在嘗試重連...'))
             await asyncio.sleep(3)
         if len(self.bot.voice_clients) == 0:
             logger.warning('Reconnection failed, bot is ready to exit...')
-            self.play_queue = []
-            self.clean(self)
+            self.play_queue.clear()
+            self.clean(interaction)
             await self.text_channel_id.send(embed=await youtube_palyer_output('機器人連線失敗，請稍後再使用'))
-            self.channel_id = []
+            self.channel_id.clear()
             return
         if len(self.play_queue) > 0:
             title = self.forbidden_char.sub('_', self.play_queue[0]['title'])
             url = self.play_queue[0]['url']
             music_path = f'{self.song_path}{title}'
-            ydl_opts = {
+            ydl_opts: YoutubeDLOptions = {
                 'cookiefile': self.cookie_path,
                 'format': 'bestaudio/best',
                 'outtmpl': music_path,
@@ -212,7 +260,7 @@ class YotubePlayer(commands.Cog):
         await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
     @app_commands.command(name='pause', description='暫停歌曲')
-    async def pause(self, interaction) -> None:
+    async def pause(self, interaction: discord.Interaction) -> None:
         if self.bot.voice_clients[0].is_playing():
             self.bot.voice_clients[0].pause()
             self.pause_flag = True
@@ -221,7 +269,7 @@ class YotubePlayer(commands.Cog):
             await interaction.response.send_message(embed=await youtube_palyer_output('沒有歌曲正在播放'))
 
     @app_commands.command(name='resume', description='回復播放歌曲')
-    async def resume(self, interaction) -> None:
+    async def resume(self, interaction: discord.Interaction) -> None:
         if self.bot.voice_clients[0].is_paused():
             self.bot.voice_clients[0].resume()
             self.pause_flag = False
@@ -297,20 +345,22 @@ class YotubePlayer(commands.Cog):
         else:
             return None
 
-    async def handle_connect(self, interaction: discord.Interaction, command: str, channel_id: str = '') -> bool:
+    async def handle_connect(self, interaction: discord.Interaction, command: str, channel_id: str | int = '') -> bool:
         match command:
             case 'join' | 'play':
                 try:
-                    channel_id = int(channel_id)
+                    channel_id = int(channel_id)  # try parse to int
                 except ValueError:
                     logger.error('請輸入正確的channel_id!')
                     return False
                 if len(self.bot.voice_clients) == 0:
-                    if interaction.user.voice != None or channel_id != 0:
+                    if cast(discord.Member, interaction.user).voice != None or channel_id != 0:
                         if channel_id == 0:
-                            voice_channel = interaction.user.voice.channel
+                            voice_channel = cast(
+                                discord.Member, interaction.user).voice.channel
                         else:
-                            voice_channel = self.bot.get_channel(channel_id)
+                            voice_channel = self.bot.get_channel(
+                                cast(int, channel_id))
                         try:
                             await voice_channel.connect()
                         except Exception as e:
@@ -344,7 +394,8 @@ class YotubePlayer(commands.Cog):
             case 'insert':
                 return True if len(self.bot.voice_clients) != 0 else False
             case _:
-                logger.critical('A unknown error has occurred!')
+                raise CustomError(
+                    f'encountered an incorrect command \'{command}\'')
 
     async def change_status(self, act: discord.Activity) -> None:
         await self.bot.change_presence(activity=act, status=discord.Status.online)
