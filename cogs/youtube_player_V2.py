@@ -271,6 +271,9 @@ class YotubePlayerV2(commands.Cog):
         voice_clients = self.__type_check(
             self.bot.voice_clients[0])  # check type
         voice_clients.stop()
+        await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
+
+        # prepare to clean up mp3 file
         await asyncio.sleep(5)  # make sure ffmpeg is stop
         if count + 1 > 1:
             now_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
@@ -278,7 +281,6 @@ class YotubePlayerV2(commands.Cog):
             self.__clean_specify(interaction, now_song, pre_song)
         else:
             self.__clean_single(interaction, previous_song)
-        await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
     @app_commands.command(name='pause', description='暫停歌曲')
     async def pause(self, interaction: discord.Interaction) -> None:
