@@ -151,8 +151,9 @@ class YotubePlayerV2(commands.Cog):
             try:
                 await self.get_details(youtube_url)
 
-                voice_clients = self.bot.voice_clients[0]
-                if isinstance(voice_clients, discord.VoiceClient) and not voice_clients.is_playing():
+                voice_clients = self.__type_check(
+                    self.bot.voice_clients[0])  # check type
+                if not voice_clients.is_playing():
                     await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲/單已加入: 加入網址為{youtube_url} 即將開始播放歌曲~'))
                     music_path = await self.download_song(0)  # download music
                     source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
@@ -165,7 +166,7 @@ class YotubePlayerV2(commands.Cog):
                         await interaction.followup.send(embed=await youtube_palyer_notice_output(self.play_list[0]))
                     await self.change_status(discord.Activity(
                         type=discord.ActivityType.listening, name=self.play_list[0]['title']))
-                    if len(self.play_list) >= 1:
+                    if len(self.play_list) - 1 >= 1:
                         # download music
                         music_path = await self.download_song(1)
                 else:
@@ -242,7 +243,7 @@ class YotubePlayerV2(commands.Cog):
                 await self.text_channel_id.send(embed=await youtube_palyer_notice_output(self.play_list[0]))
             await self.change_status(discord.Activity(
                 type=discord.ActivityType.listening, name=self.play_list[0]['title']))
-            if len(self.play_list) >= 1:
+            if len(self.play_list) - 1 >= 1:
                 music_path = await self.download_song(1)  # download music
         else:
             await self.change_status(discord.Activity(
