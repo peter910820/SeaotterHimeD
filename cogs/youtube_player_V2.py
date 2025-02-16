@@ -215,9 +215,7 @@ class YotubePlayerV2(commands.Cog):
         if not isinstance(self.text_channel_id, discord.TextChannel):
             raise CustomError('self.text_channel_id is not a TextChannel')
 
-        if self.clean_single(interaction, previous_song) == 1:
-            await self.text_channel_id.send(embed=await youtube_palyer_output('正在嘗試重連...'))
-            await asyncio.sleep(3)
+        self.clean_single(interaction, previous_song)
         if len(self.bot.voice_clients) == 0:
             logger.warning('Reconnection failed, bot is ready to exit...')
             self.play_list.clear()
@@ -273,8 +271,13 @@ class YotubePlayerV2(commands.Cog):
         voice_clients = self.__type_check(
             self.bot.voice_clients[0])  # check type
         voice_clients.stop()
-        await asyncio.sleep(1)  # make sure ffmpeg is stop
-        self.clean_single(interaction, previous_song)
+        await asyncio.sleep(5)  # make sure ffmpeg is stop
+        if count + 1 > 1:
+            now_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+            pre_song = f'{self.song_path}{self.play_list[1]["title"]}.mp3'
+            self.__clean_specify(interaction, now_song, pre_song)
+        else:
+            self.clean_single(interaction, previous_song)
         await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
     @app_commands.command(name='pause', description='暫停歌曲')
@@ -442,6 +445,17 @@ class YotubePlayerV2(commands.Cog):
                 os.remove(song_route)
         except PermissionError as e:
             logger.error(e)
+            return 1
+        return 0
+
+    def __clean_specify(self, _: discord.Interaction, now_song_route: str, pre_song_route: str) -> int:
+        try:
+            for file in os.scandir(self.song_path):
+                if file.path[-4:] == '.mp3' and (file.path != now_song_route and file.path != pre_song_route):
+                    os.remove(file.path)
+        except PermissionError as e:
+            logger.error(e)
+            logger.error('ffmpeg is possible that there is no normal exit!')
             return 1
         return 0
 
