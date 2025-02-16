@@ -171,6 +171,10 @@ class YotubePlayerV2(commands.Cog):
                         music_path = await self.download_song(1)
                 else:
                     await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲已加入排序: 加入網址為{youtube_url}'))
+                    if len(self.play_list) - 1 >= 1 and not os.path.exists(f'{self.song_path}{self.play_list[1]["title"]}.mp3'):
+                        # download music
+                        music_path = await self.download_song(1)
+
             except Exception as e:
                 logger.error(e)
                 await interaction.followup.send(embed=await error_output(e))
