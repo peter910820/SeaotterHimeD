@@ -127,7 +127,7 @@ class YotubePlayerV2(commands.Cog):
     async def leave(self, interaction: discord.Interaction) -> None:
         if await self.handle_connect(interaction, 'leave'):
             await asyncio.sleep(1)
-            self.clean(interaction)
+            self.__clean(interaction)
             await interaction.response.send_message(embed=await youtube_palyer_output('離開語音頻道成功'))
         else:
             await interaction.response.send_message(embed=await youtube_palyer_output('機器人未加入頻道'))
@@ -215,11 +215,11 @@ class YotubePlayerV2(commands.Cog):
         if not isinstance(self.text_channel_id, discord.TextChannel):
             raise CustomError('self.text_channel_id is not a TextChannel')
 
-        self.clean_single(interaction, previous_song)
+        self.__clean_single(interaction, previous_song)
         if len(self.bot.voice_clients) == 0:
             logger.warning('Reconnection failed, bot is ready to exit...')
             self.play_list.clear()
-            self.clean(interaction)
+            self.__clean(interaction)
             await self.text_channel_id.send(embed=await youtube_palyer_output('機器人連線失敗，請稍後再使用'))
             self.channel_id.clear()
             return
@@ -277,7 +277,7 @@ class YotubePlayerV2(commands.Cog):
             pre_song = f'{self.song_path}{self.play_list[1]["title"]}.mp3'
             self.__clean_specify(interaction, now_song, pre_song)
         else:
-            self.clean_single(interaction, previous_song)
+            self.__clean_single(interaction, previous_song)
         await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
     @app_commands.command(name='pause', description='暫停歌曲')
@@ -428,18 +428,17 @@ class YotubePlayerV2(commands.Cog):
     async def change_status(self, act: discord.Activity) -> None:
         await self.bot.change_presence(activity=act, status=discord.Status.online)
 
-    def clean(self, _: discord.Interaction) -> int:
+    def __clean(self, _: discord.Interaction) -> int:
         try:
             for file in os.scandir(self.song_path):
                 if file.path[-4:] == '.mp3':
                     os.remove(file.path)
         except PermissionError as e:
             logger.error(e)
-            logger.error('ffmpeg is possible that there is no normal exit!')
             return 1
         return 0
 
-    def clean_single(self, _: discord.Interaction, song_route: str) -> int:
+    def __clean_single(self, _: discord.Interaction, song_route: str) -> int:
         try:
             if os.path.exists(song_route):
                 os.remove(song_route)
@@ -455,7 +454,6 @@ class YotubePlayerV2(commands.Cog):
                     os.remove(file.path)
         except PermissionError as e:
             logger.error(e)
-            logger.error('ffmpeg is possible that there is no normal exit!')
             return 1
         return 0
 
