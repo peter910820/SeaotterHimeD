@@ -3,6 +3,7 @@ import discord
 from loguru import logger
 
 from common.structure import ServerInfoStruct
+from common.youtube_player_V2_structure import SongDetails
 
 
 async def error_output(error_message: Exception):
@@ -21,7 +22,7 @@ async def youtube_palyer_output(youtube_palyer_message: str):
     return embed
 
 
-async def youtube_palyer_notice_output(song_data: str):
+async def youtube_palyer_notice_output(song_data: SongDetails):
     embed = discord.Embed(
         # type: ignore
         title='YT-PLAYER', description=f'現在正在播放: {song_data["title"]}', color=discord.colour.Colour.red())

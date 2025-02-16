@@ -8,22 +8,14 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from loguru import logger
-from typing import TypedDict, cast
+from typing import Optional, TypedDict, cast
 
 from common.structure import CustomError
+from common.youtube_player_V2_structure import SongDetails
 from utils.embed_output import error_output, youtube_palyer_output, youtube_palyer_notice_output
 
 
 load_dotenv()
-
-
-class SongDetails(TypedDict):
-    '''
-    播放佇列內每一筆音樂的的型別定義
-    '''
-
-    url: str
-    title: str
 
 
 class PostprocessorsOptions(TypedDict):
@@ -58,7 +50,7 @@ class YoutubeDLOptionsForList(TypedDict):
     noplaylist: bool  # playlist
 
 
-class YotubePlayer(commands.Cog):
+class YotubePlayerV2(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -152,37 +144,40 @@ class YotubePlayer(commands.Cog):
         self.text_channel_id = interaction.channel
         await interaction.response.defer()
         youtube_url = self.url_format(youtube_url)
-        if youtube_url == None:
+        if youtube_url == 'None':
             await interaction.followup.send(embed=await youtube_palyer_output('找不到歌曲喔'))
             return
         if await self.handle_connect(interaction, 'play', channel_id):
             try:
                 await self.get_details(youtube_url)
+
+                voice_clients = self.bot.voice_clients[0]
+                if isinstance(voice_clients, discord.VoiceClient) and not voice_clients.is_playing():
+                    await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲/單已加入: 加入網址為{youtube_url} 即將開始播放歌曲~'))
+                    music_path = await self.download_song(0)  # download music
+                    source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
+                        executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
+                    voice_clients.play(
+                        source, after=lambda error: self.after_song_interface(
+                            interaction, error)
+                    )
+                    if self.notice:
+                        await interaction.followup.send(embed=await youtube_palyer_notice_output(self.play_list[0]))
+                    await self.change_status(discord.Activity(
+                        type=discord.ActivityType.listening, name=self.play_list[0]['title']))
+                    if len(self.play_list) >= 1:
+                        # download music
+                        music_path = await self.download_song(1)
+                else:
+                    await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲已加入排序: 加入網址為{youtube_url}'))
             except Exception as e:
                 logger.error(e)
                 await interaction.followup.send(embed=await error_output(e))
                 return
-            if not self.bot.voice_clients[0].is_playing():
-                await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲/單已加入: 加入網址為{youtube_url} 即將開始播放歌曲~'))
-                music_path = await self.download_song(0)  # download music
-                source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
-                    executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
-                self.bot.voice_clients[0].play(
-                    source, after=lambda error: self.after_song_interface(
-                        interaction, error)
-                )
-                if self.notice:
-                    await interaction.followup.send(embed=await youtube_palyer_notice_output(self.play_list[0]))
-                await self.change_status(discord.Activity(
-                    type=discord.ActivityType.listening, name=self.play_list[0]['title']))
-                if len(self.play_list) >= 1:
-                    music_path = await self.download_song(1)  # download music
-            else:
-                await interaction.followup.send(embed=await youtube_palyer_output(f'歌曲已加入排序: 加入網址為{youtube_url}'))
         else:
             await interaction.followup.send(embed=await youtube_palyer_output('加入頻道失敗/未加入頻道'))
 
-    def after_song_interface(self, interaction: discord.Interaction, error: Exception):
+    def after_song_interface(self, interaction: discord.Interaction, error: Optional[Exception]):
         if error:
             logger.error(str(error))
         else:
@@ -190,17 +185,18 @@ class YotubePlayer(commands.Cog):
             self.bot.loop.create_task(self.after_song(interaction))
 
     async def download_song(self, index: int) -> str:
-        title = self.forbidden_char.sub('_', self.play_list[index]['title'])
-        self.play_list[index]['title'] = title
-        url = self.play_list[index]['url']
-        music_path = f'{self.song_path}{title}'
-        ydl_opts: YoutubeDLOptions = {
-            'cookiefile': self.cookie_path,
-            'format': 'bestaudio/best',
-            'outtmpl': music_path,
-            'postprocessors': self.ydl_opts_postprocessors,
-        }
         try:
+            title = self.forbidden_char.sub(
+                '_', self.play_list[index]['title'])
+            self.play_list[index]['title'] = title
+            url = self.play_list[index]['url']
+            music_path = f'{self.song_path}{title}'
+            ydl_opts: YoutubeDLOptions = {
+                'cookiefile': self.cookie_path,
+                'format': 'bestaudio/best',
+                'outtmpl': music_path,
+                'postprocessors': self.ydl_opts_postprocessors,
+            }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             return music_path
@@ -210,6 +206,10 @@ class YotubePlayer(commands.Cog):
 
     async def after_song(self, interaction: discord.Interaction):
         previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+        # judgment self.text_channel_id type is correct
+        if not isinstance(self.text_channel_id, discord.TextChannel):
+            raise CustomError('self.text_channel_id is not a TextChannel')
+
         if self.clean_single(interaction, previous_song) == 1:
             await self.text_channel_id.send(embed=await youtube_palyer_output('正在嘗試重連...'))
             await asyncio.sleep(3)
@@ -228,9 +228,13 @@ class YotubePlayer(commands.Cog):
                 music_path = f'{self.song_path}{self.play_list[0]["title"]}'
             else:
                 music_path = await self.download_song(0)  # download music
+
+            voice_clients = self.__type_check(
+                self.bot.voice_clients[0])  # check type
+
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(
                 executable=self.ffmpeg_path, source=f'{music_path}.mp3'), volume=self.volume)
-            self.bot.voice_clients[0].play(
+            voice_clients.play(
                 source, after=lambda error: self.after_song_interface(
                     interaction, error)
             )
@@ -261,15 +265,19 @@ class YotubePlayer(commands.Cog):
             count -= 1
             for _ in range(0, count):
                 self.play_list.pop(0)
-        self.bot.voice_clients[0].stop()
+        voice_clients = self.__type_check(
+            self.bot.voice_clients[0])  # check type
+        voice_clients.stop()
         await asyncio.sleep(1)  # make sure ffmpeg is stop
         self.clean_single(interaction, previous_song)
         await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
     @app_commands.command(name='pause', description='暫停歌曲')
     async def pause(self, interaction: discord.Interaction) -> None:
-        if self.bot.voice_clients[0].is_playing():
-            self.bot.voice_clients[0].pause()
+        voice_clients = self.__type_check(
+            self.bot.voice_clients[0])  # check type
+        if voice_clients.is_playing():
+            voice_clients.pause()
             self.pause_flag = True
             await interaction.response.send_message(embed=await youtube_palyer_output('歌曲已暫停'))
         else:
@@ -277,8 +285,10 @@ class YotubePlayer(commands.Cog):
 
     @app_commands.command(name='resume', description='回復播放歌曲')
     async def resume(self, interaction: discord.Interaction) -> None:
-        if self.bot.voice_clients[0].is_paused():
-            self.bot.voice_clients[0].resume()
+        voice_clients = self.__type_check(
+            self.bot.voice_clients[0])  # check type
+        if voice_clients.is_paused():
+            voice_clients.resume()
             self.pause_flag = False
             await interaction.response.send_message(embed=await youtube_palyer_output('歌曲已繼續播放'))
         else:
@@ -342,15 +352,16 @@ class YotubePlayer(commands.Cog):
                 map(lambda x: {'url': x.get('url'), 'title': x.get('title')}, song_details))))
             self.play_list.extend(song_details)
 
-    def url_format(self, youtube_url: str) -> str | None:
-        if '&list=' in youtube_url:
+    def url_format(self, youtube_url: str) -> str:
+        if '&list=' in youtube_url:  # remove '&list=' tag
             youtube_url = youtube_url[0:youtube_url.find('&list=')]
         if youtube_url.startswith(('https://www.youtube.com/', 'https://youtube.com/', 'https://youtu.be/')):
             return youtube_url
+        # handle youtube music
         elif youtube_url.startswith('https://music.youtube.com/'):
             return youtube_url.replace('music', 'www')
-        else:
-            return None
+        else:  # this is not a correct link
+            return 'None'
 
     async def handle_connect(self, interaction: discord.Interaction, command: str, channel_id: str | int = '') -> bool:
         match command:
@@ -386,14 +397,16 @@ class YotubePlayer(commands.Cog):
                     # The song hasn’t finished playing yet
                     if len(self.play_list) != 0:
                         try:
+                            voice_clients = self.__type_check(
+                                self.bot.voice_clients[0])  # check type
                             self.play_list = [self.play_list[0]]
-                            self.bot.voice_clients[0].stop()
+                            voice_clients.stop()
                         except:
                             return True
                         await asyncio.sleep(1)  # Ensures the stop is complete
                     await self.bot.voice_clients[0].disconnect(force=False)
                     await self.change_status(discord.Activity(
-                        type=discord.ActivityType.watching, name='ご注文はうさぎですか？'))
+                        type=discord.ActivityType.playing, name='Galgame'))
                     self.channel_id = []
                     return True
                 else:
@@ -427,6 +440,11 @@ class YotubePlayer(commands.Cog):
             return 1
         return 0
 
+    def __type_check(self, voice_clients: discord.VoiceProtocol) -> discord.VoiceClient:
+        if not isinstance(voice_clients, discord.VoiceClient):
+            raise CustomError('voice_clients is not a discord.VoiceClient')
+        return voice_clients
+
 
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(YotubePlayer(bot), guild=None)
+    await bot.add_cog(YotubePlayerV2(bot), guild=None)
