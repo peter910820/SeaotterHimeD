@@ -127,7 +127,7 @@ class YotubePlayerV2(commands.Cog):
     async def leave(self, interaction: discord.Interaction) -> None:
         if await self.handle_connect(interaction, 'leave'):
             await asyncio.sleep(1)
-            self.__clean(interaction)
+            self.__clean(interaction, "")
             await interaction.response.send_message(embed=await youtube_palyer_output('離開語音頻道成功'))
         else:
             await interaction.response.send_message(embed=await youtube_palyer_output('機器人未加入頻道'))
@@ -140,6 +140,8 @@ class YotubePlayerV2(commands.Cog):
         app_commands.Choice(name='True', value=1),
     ])
     async def play(self, interaction: discord.Interaction, notice: int, youtube_url: str, channel_id: str = '0') -> None:
+        if len(self.play_list) == 0:
+            self.__clean(interaction, "")
         self.notice = bool(notice)
         self.text_channel_id = interaction.channel
         await interaction.response.defer()
@@ -211,20 +213,21 @@ class YotubePlayerV2(commands.Cog):
             return await self.download_song(index)
 
     async def after_song(self, interaction: discord.Interaction):
-        previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
         # judgment self.text_channel_id type is correct
         if not isinstance(self.text_channel_id, discord.TextChannel):
             raise CustomError('self.text_channel_id is not a TextChannel')
-
-        self.__clean_single(interaction, previous_song)
+        # judgment bot disconnection
         if len(self.bot.voice_clients) == 0:
             logger.warning('Reconnection failed, bot is ready to exit...')
             self.play_list.clear()
-            self.__clean(interaction)
+            self.__clean(interaction, "")
             await self.text_channel_id.send(embed=await youtube_palyer_output('機器人連線失敗，請稍後再使用'))
             self.channel_id.clear()
             return
         if len(self.play_list) > 0:
+            previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+            self.__clean(interaction, previous_song)
+
             self.play_list.pop(0)
             previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
             # check if song exists
@@ -249,6 +252,8 @@ class YotubePlayerV2(commands.Cog):
             if len(self.play_list) - 1 >= 1:
                 music_path = await self.download_song(1)  # download music
         else:
+            self.__clean(interaction, "")
+
             await self.change_status(discord.Activity(
                 type=discord.ActivityType.watching, name='Galgame'))
             logger.success('已播放完歌曲')
@@ -264,23 +269,28 @@ class YotubePlayerV2(commands.Cog):
             await interaction.followup.send(embed=await youtube_palyer_output('我還沒加入語音頻道呦'))
             return
         if count > 1:
-            if count > song_length:
+            if count >= song_length:
                 count = song_length
-            count -= 1
-            del self.play_list[:count]
+                self.play_list.clear()
+            else:
+                count -= 1
+                del self.play_list[:count]
         voice_clients = self.__type_check(
             self.bot.voice_clients[0])  # check type
         voice_clients.stop()
         await interaction.followup.send(embed=await youtube_palyer_output('歌曲已跳過'))
 
         # prepare to clean up mp3 file
-        await asyncio.sleep(5)  # make sure ffmpeg is stop
-        if count + 1 > 1:
-            now_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
-            pre_song = f'{self.song_path}{self.play_list[1]["title"]}.mp3'
-            self.__clean_specify(interaction, now_song, pre_song)
+        await asyncio.sleep(4)  # make sure ffmpeg is stop
+        if len(self.play_list) != 0:
+            if count + 1 > 1:
+                now_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
+                pre_song = f'{self.song_path}{self.play_list[1]["title"]}.mp3'
+                self.__clean_specify(interaction, now_song, pre_song)
+            else:
+                self.__clean(interaction, previous_song)
         else:
-            self.__clean_single(interaction, previous_song)
+            self.__clean(interaction, "")
 
     @app_commands.command(name='pause', description='暫停歌曲')
     async def pause(self, interaction: discord.Interaction) -> None:
@@ -319,8 +329,10 @@ class YotubePlayerV2(commands.Cog):
                 try:
                     with yt_dlp.YoutubeDL(self.get_details_options) as ydl:
                         details = ydl.extract_info(youtube_url, download=False)
-                        if details.get('entries') == None:  # check if not a playlist
+                        # check if not a playlist
+                        if details.get('entries') == None:  # type: ignore
                             self.play_list.insert(
+                                # type: ignore
                                 1, {'url': youtube_url, 'title': details.get('title')})
                             logger.info(self.play_list[1])
                         else:
@@ -349,18 +361,20 @@ class YotubePlayerV2(commands.Cog):
     async def get_details(self, youtube_url: str) -> None:
         with yt_dlp.YoutubeDL(self.get_details_options) as ydl:
             details = ydl.extract_info(youtube_url, download=False)
-            if details.get('entries') == None:  # check if not a playlist
+            # check if not a playlist
+            if details.get('entries') == None:  # type: ignore
                 if details.get('title') not in {'[Deleted video]', '[Private video]'}:
                     song_details = [
                         {'url': youtube_url, 'title': details.get('title')}]
                 else:
                     raise ValueError('該網址沒有影片/音樂')
             else:
-                song_details = [entry for entry in details.get(
+                song_details = [entry for entry in details.get(  # type: ignore
+                    # type: ignore
                     'entries') if entry.get('title') not in {'[Deleted video]', '[Private video]'}]
             logger.info(str(list(
                 map(lambda x: {'url': x.get('url'), 'title': x.get('title')}, song_details))))
-            self.play_list.extend(song_details)
+            self.play_list.extend(song_details)  # type: ignore
 
     def url_format(self, youtube_url: str) -> str:
         if '&list=' in youtube_url:  # remove '&list=' tag
@@ -409,7 +423,7 @@ class YotubePlayerV2(commands.Cog):
                         try:
                             voice_clients = self.__type_check(
                                 self.bot.voice_clients[0])  # check type
-                            self.play_list = [self.play_list[0]]
+                            self.play_list.clear()
                             voice_clients.stop()
                         except:
                             return True
@@ -417,7 +431,7 @@ class YotubePlayerV2(commands.Cog):
                     await self.bot.voice_clients[0].disconnect(force=False)
                     await self.change_status(discord.Activity(
                         type=discord.ActivityType.playing, name='Galgame'))
-                    self.channel_id = []
+                    self.channel_id.clear()
                     return True
                 else:
                     return False
@@ -430,20 +444,15 @@ class YotubePlayerV2(commands.Cog):
     async def change_status(self, act: discord.Activity) -> None:
         await self.bot.change_presence(activity=act, status=discord.Status.online)
 
-    def __clean(self, _: discord.Interaction) -> int:
+    def __clean(self, _: discord.Interaction, song_route: str) -> int:
         try:
-            for file in os.scandir(self.song_path):
-                if file.path[-4:] == '.mp3':
-                    os.remove(file.path)
-        except PermissionError as e:
-            logger.error(e)
-            return 1
-        return 0
-
-    def __clean_single(self, _: discord.Interaction, song_route: str) -> int:
-        try:
-            if os.path.exists(song_route):
-                os.remove(song_route)
+            if song_route.strip() != "":
+                if os.path.exists(song_route):
+                    os.remove(song_route)
+            else:
+                for file in os.scandir(self.song_path):
+                    if file.path[-4:] == '.mp3':
+                        os.remove(file.path)
         except PermissionError as e:
             logger.error(e)
             return 1
