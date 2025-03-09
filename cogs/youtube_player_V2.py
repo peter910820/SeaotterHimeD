@@ -205,9 +205,10 @@ class YotubePlayerV2(commands.Cog):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             return music_path
+        # handle "This video is only available to Music Premium members" error
         except Exception as e:
-            logger.error(e)
-            raise CustomError(str(e))
+            self.play_list.pop(index)
+            return await self.download_song(index)
 
     async def after_song(self, interaction: discord.Interaction):
         previous_song = f'{self.song_path}{self.play_list[0]["title"]}.mp3'
@@ -266,8 +267,7 @@ class YotubePlayerV2(commands.Cog):
             if count > song_length:
                 count = song_length
             count -= 1
-            for _ in range(0, count):
-                self.play_list.pop(0)
+            del self.play_list[:count]
         voice_clients = self.__type_check(
             self.bot.voice_clients[0])  # check type
         voice_clients.stop()
