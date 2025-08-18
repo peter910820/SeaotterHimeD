@@ -14,6 +14,10 @@ class General(commands.Cog):
     async def ping(self, interaction: discord.Interaction):
         await interaction.response.send_message(embed=await general_output(f'delay time: {str(round(self.bot.latency*1000, 3))}ms.'))
 
+    @app_commands.command(name='id', description='check user id.')
+    async def get_id(self, interaction: discord.Interaction):
+        await interaction.response.send_message(embed=await general_output(f'Your user ID: {interaction.user.id}'))
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(General(bot), guild=None)
